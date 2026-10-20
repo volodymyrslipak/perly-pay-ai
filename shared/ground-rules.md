@@ -1,0 +1,11 @@
+## Ground rules (every Perly Pay integration)
+
+1. **Test mode first.** Build with a `sk_test_…` key: test networks, nothing real moves, `invoices.simulate` pays an invoice for you. Switch to `sk_live_…` only in the go-live step. Test and live are separate worlds: products, prices, customers, webhook endpoints and their secrets made with a test key do not exist in live.
+2. **The secret key stays on the server.** Read it from `PERLY_PAY_SECRET_KEY`. Never put it in a browser bundle, a mobile or desktop app, a bot's client, a public repo or a log. Software you ship checks licenses with `LicenseClient`, which needs no key.
+3. **Never trust the redirect.** A buyer landing on your `return_url` proves nothing. Grant access only from a verified `invoice.fulfilled` webhook, or from your server asking `entitlements.check`.
+4. **Grant on `invoice.fulfilled`, not `invoice.paid`.** Fulfilled comes once per invoice, after the payment cleared screening. A payment held for review is paid but not fulfilled.
+5. **Verify every webhook** on the raw body with the endpoint's `whsec_…` secret (`Perly-Signature`, five minutes of tolerance). A delivery can come twice: act once per event `id`. Answer 2xx fast; failures are retried for 72 hours.
+6. **Idempotency.** The SDK sends an `Idempotency-Key` on every POST and reuses it on retries. Pass your own (`order-<id>`, `req-<id>`) when your code may repeat an action, such as spending credits or opening an order's invoice.
+7. **Money is integers.** Fiat amounts are minor units next to a `currency`: `4900` is $49.00. Only `USD` and `EUR`. Never floats. On-chain amounts are integer strings in the asset's smallest unit.
+8. **Non-custodial, no auto-debit.** Buyers pay BTC, USDC or USDT straight to the seller's wallet; Perly Pay never holds money. Subscriptions renew by an invoice and reminders the buyer pays each period, never by pulling funds. Refunds are sent by the seller from their own wallet.
+9. **Use the SDK:** `npm install perly-pay` (TypeScript, zero dependencies, any runtime with `fetch`) or `composer require perly/perly-pay` (PHP 8.1+). Other languages call the REST API at `https://pay.perly.io/api/v1` with `Authorization: Bearer <key>`; the spec is at `https://pay.perly.io/api/v1/openapi.json`. Point the SDK at a local Pay with `PERLY_PAY_API` (`baseUrl` option).

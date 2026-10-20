@@ -1,0 +1,24 @@
+{
+  "name": "perly-pay-example-telegram-bot",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A Telegram bot with a paid command, sold for crypto with Perly Pay. No bot framework.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "setup": "tsx scripts/setup.ts",
+    "start": "tsx src/bot.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "perly-pay": "^0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=20.12"
+  }
+}

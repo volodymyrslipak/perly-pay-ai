@@ -1,0 +1,92 @@
+---
+name: test-and-go-live
+description: Test a Perly Pay integration end to end in test mode without a wallet (simulated full, short and over payments, webhooks, access), then switch it to live money safely with a checklist — live key, wallets, live products and prices, live webhook endpoint, plan. Use when the user asks "does my payment flow work?", wants to test crypto payments, write an automated test for checkout, simulate a payment, or go live / launch / switch to production with Perly Pay.
+license: MIT
+metadata:
+  author: Perly
+  version: "0.1.0"
+  docs: https://pay.perly.io/docs/test-mode
+---
+
+# Test, then go live
+
+## When to use
+
+Before anyone pays real money, and again on the day the integration switches to live. Test mode is a second set of books next to live: its own keys, products, invoices, customers and webhooks, on test networks, free and unlimited.
+
+## Steps — test
+
+1. **Use a test key** (`sk_test_…`); `new PerlyPay(key).mode` is `"test"`. Fail fast in code if a test build ever sees `sk_live_` or production sees `sk_test_`.
+2. **Run the happy path from code:** create the invoice your app creates (same function), then `invoices.simulate(id)` — the invoice turns paid and fulfilled, entitlements and license keys are issued, a receipt is made and your webhooks get the events.
+3. **Assert the outcome your users care about:** the webhook route granted access, `entitlements.check` says `has_access`, the credit balance moved, the key activates.
+4. **Run the unhappy paths:** `simulate(id, { outcome: "short" })` (underpaid: no access, the invoice waits), `{ outcome: "over" }` (paid, the extra to refund), an expired or canceled invoice, a webhook with a wrong signature (400), the same event twice (handled once). `short` and `over` need the buyer's chain chosen first: open `invoice.url` once, or simulate a `full` payment on a fresh invoice for the happy path.
+5. **Webhooks while developing:** hosted Perly Pay needs a public https URL — a tunnel (`cloudflared tunnel --url http://localhost:3000`, ngrok) pointed at your route, registered as a test endpoint. In unit tests use `webhooks.testRequest(event, secret)`.
+6. **Real test coins** (optional): pay a test invoice from a testnet wallet (Bitcoin testnet4; test USDC on Base Sepolia and other testnets). Never send mainnet money to a test invoice.
+7. **Keep the test in CI** if it is fast: a test key in CI secrets, one simulated purchase per recipe.
+
+## Steps — go live
+
+1. **Wallets:** in Dashboard → Wallets connect the public keys (xpub/zpub from a Ledger or Trezor, or a pool of addresses) and confirm the first address on the device. Perly Pay never asks for a seed or a private key — anyone who does is not Perly Pay.
+2. **Live key:** Dashboard → Developers → API keys, `sk_live_…`, into the production secret store as `PERLY_PAY_SECRET_KEY`. Never in the repo.
+3. **Recreate what you made in test** with the live key: products, prices, payment links, coupons. Ids differ per mode, so update `PERLY_PAY_*_ID` in production config (a setup script run once per mode is easiest).
+4. **Live webhook endpoint** with your production https URL and the same events; its new `whsec_…` into `PERLY_PAY_WEBHOOK_SECRET`.
+5. **Business details:** name, support email, receipt prefix and refund terms in Settings — buyers see them on invoices and receipts. Add your site under Settings → Checkout if you open the checkout over your page (pay.js).
+6. **Plan:** test mode is free and unlimited; live counts paid sales per calendar month (Free 21, then Starter, Pro, Business, Scale and Enterprise with no limit — flat, 0% of volume, no fee per sale). Each limit has a 10% buffer; past it, new live invoices and checkout sessions are refused with `plan_limit_reached` (403) until a person moves up a plan in the dashboard, while invoices already made still get paid.
+7. **One real payment** of a small amount from your own wallet: watch it arrive, the webhook grant access, the receipt email, then refund it from your wallet to practise.
+8. **Watch:** Dashboard → Developers shows webhook deliveries and failures; connect Telegram for payment and webhook alerts.
+
+## Code (Node, TypeScript) — a test that buys
+
+```ts
+import { PerlyPay } from "perly-pay";
+import { strict as assert } from "node:assert";
+
+const pay = new PerlyPay(process.env.PERLY_PAY_SECRET_KEY!, { baseUrl: process.env.PERLY_PAY_API });
+assert.equal(pay.mode, "test", "tests run with a sk_test_ key only");
+
+const invoice = await createOrderInvoice({ userId: "test-user-1" }); // the same function your app uses
+await pay.invoices.simulate(invoice.id);
+
+const access = await pay.entitlements.check({ customer_external_id: "test-user-1", product: process.env.PERLY_PAY_PRODUCT_ID! });
+assert.ok(access.has_access);
+// and, if webhooks reach this machine: poll your own DB until the webhook marked the order paid
+```
+
+```bash
+# the same from a shell
+curl -X POST https://pay.perly.io/api/v1/invoices/inv_…/simulate -H "Authorization: Bearer $PERLY_PAY_SECRET_KEY" -H "Content-Type: application/json" -d '{}'
+```
+
+## Code (PHP)
+
+```php
+$invoice = $perly->invoices->create(['amount' => 1900, 'description' => 'Test order', 'customer_email' => 'you@example.com']);
+$perly->invoices->simulate($invoice['id']);                       // full
+$perly->invoices->simulate($other['id'], ['outcome' => 'short']); // underpaid, after a chain was chosen
+```
+
+## Pitfalls
+
+- `simulate` with a live key: refused. That is the point.
+- Forgetting step 3 of going live: test price ids with a live key answer "not found".
+- Shipping without the live webhook endpoint: payments arrive in the wallet but nobody gets access.
+- A test webhook secret in production (or the reverse): every delivery fails the signature.
+- In test mode letters go only to your team's addresses; buyers' receipts are held. Use your own email to see what a buyer gets.
+
+<!-- perly-pay:ground-rules:start -->
+## Ground rules (every Perly Pay integration)
+
+1. **Test mode first.** Build with a `sk_test_…` key: test networks, nothing real moves, `invoices.simulate` pays an invoice for you. Switch to `sk_live_…` only in the go-live step. Test and live are separate worlds: products, prices, customers, webhook endpoints and their secrets made with a test key do not exist in live.
+2. **The secret key stays on the server.** Read it from `PERLY_PAY_SECRET_KEY`. Never put it in a browser bundle, a mobile or desktop app, a bot's client, a public repo or a log. Software you ship checks licenses with `LicenseClient`, which needs no key.
+3. **Never trust the redirect.** A buyer landing on your `return_url` proves nothing. Grant access only from a verified `invoice.fulfilled` webhook, or from your server asking `entitlements.check`.
+4. **Grant on `invoice.fulfilled`, not `invoice.paid`.** Fulfilled comes once per invoice, after the payment cleared screening. A payment held for review is paid but not fulfilled.
+5. **Verify every webhook** on the raw body with the endpoint's `whsec_…` secret (`Perly-Signature`, five minutes of tolerance). A delivery can come twice: act once per event `id`. Answer 2xx fast; failures are retried for 72 hours.
+6. **Idempotency.** The SDK sends an `Idempotency-Key` on every POST and reuses it on retries. Pass your own (`order-<id>`, `req-<id>`) when your code may repeat an action, such as spending credits or opening an order's invoice.
+7. **Money is integers.** Fiat amounts are minor units next to a `currency`: `4900` is $49.00. Only `USD` and `EUR`. Never floats. On-chain amounts are integer strings in the asset's smallest unit.
+8. **Non-custodial, no auto-debit.** Buyers pay BTC, USDC or USDT straight to the seller's wallet; Perly Pay never holds money. Subscriptions renew by an invoice and reminders the buyer pays each period, never by pulling funds. Refunds are sent by the seller from their own wallet.
+9. **Use the SDK:** `npm install perly-pay` (TypeScript, zero dependencies, any runtime with `fetch`) or `composer require perly/perly-pay` (PHP 8.1+). Other languages call the REST API at `https://pay.perly.io/api/v1` with `Authorization: Bearer <key>`; the spec is at `https://pay.perly.io/api/v1/openapi.json`. Point the SDK at a local Pay with `PERLY_PAY_API` (`baseUrl` option).
+<!-- perly-pay:ground-rules:end -->
+
+## More
+
+- Test mode: https://pay.perly.io/docs/test-mode · Wallets: https://pay.perly.io/docs/wallets · Pricing: https://pay.perly.io/pricing

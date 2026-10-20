@@ -1,0 +1,14 @@
+{
+  "name": "perly-pay",
+  "displayName": "Perly Pay",
+  "version": "0.1.0",
+  "description": "Sell your code, API, app, bot or MCP tools for bitcoin and dollar stablecoins with Perly Pay: payments land straight in your wallet, flat plans, 0% of volume. Skills for checkout, credits, subscriptions renewed by invoice, license keys, bot access, paid MCP tools, webhooks and going live.",
+  "author": {
+    "name": "Perly",
+    "url": "https://pay.perly.io"
+  },
+  "homepage": "https://pay.perly.io/docs/recipes",
+  "repository": "https://github.com/volodymyrslipak/perly-pay-ai",
+  "license": "MIT",
+  "keywords": ["payments", "crypto", "bitcoin", "usdc", "usdt", "stablecoin", "checkout", "credits", "subscriptions", "license-keys", "mcp", "non-custodial"]
+}

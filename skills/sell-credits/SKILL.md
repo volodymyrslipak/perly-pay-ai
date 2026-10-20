@@ -1,0 +1,119 @@
+---
+name: sell-credits
+description: Sell prepaid credits for an API, AI feature or SaaS usage with Perly Pay and spend them per request — buyers top up with bitcoin, USDC or USDT. Use when the user wants usage-based or pay-as-you-go pricing, API credits, tokens, a balance, top-ups, "charge per request/call/generation", or metering. Creates a credit_pack product and price, a top-up link per user, checks the balance and consumes credits per request with an idempotency key, and handles a low or empty balance.
+license: MIT
+metadata:
+  author: Perly
+  version: "0.1.0"
+  docs: https://pay.perly.io/docs/recipe-api-credits
+---
+
+# Sell credits and spend them per request
+
+## When to use
+
+The user charges for usage: API calls, AI generations, exports, minutes. Buyers prepay a pack of credits; every request spends some. Perly Pay is the ledger: `credits.consume` spends atomically and never below zero, `credits.balance` says what is left, and every buyer has their own top-up page. Nothing is debited automatically, ever: when credits run out, the buyer tops up.
+
+## Steps
+
+1. **Create a credit pack once** per mode: a product and a price with `model: "credit_pack"`, `unit_amount` (minor units) and `credits`. Several packs (1 000, 5 000) are several prices of one product. On the product's page in the dashboard, set the low-balance alert and, if you like, "any amount".
+2. **Give each user a customer** with your own id: `customers.create({ external_id: user.id, email })` the first time (find with `customers.list({ external_id })`). From then on the SDK's `credits.*` take that id directly — or a `cus_…` id, or an email.
+3. **Top-up:** send the buyer to `credits.topUpUrl(user.id, { product })` — their own stable page that lists the packs and opens an invoice for the one they pick. Every paid pack adds credits.
+4. **Per request, spend first:** `credits.consume(user.id, cost, { product, action, idempotencyKey: "req-<user id>-<request id>" })`, then do the work. The answer's `balance` is what is left. The request id must be unique per real request (yours, or the client's retry-safe id); a retry with the same key returns the first spend, even days later.
+5. **Short:** `consume` refuses with `insufficient_credits` (409) and spends nothing — answer **402** with the top-up URL, never a 500. A user who never bought is not a customer yet (`resource_missing` on `customer`): same answer.
+6. **Show the balance** with `credits.balance(user.id, { product })` (`balance`, `low`, `top_up_url`), in your UI or a response header such as `X-Credits-Remaining`.
+7. **Listen** (optional, see `verify-webhooks`): `credits.low` and `credits.depleted` to nudge, `invoice.fulfilled` to say "credits added". With the buyer's letter on, Perly Pay emails them their top-up link when they run low.
+8. **`action`** is your label (`chat`, `image.hd`): the product's page sums spends by action and by customer.
+
+## Code (Node, TypeScript)
+
+```ts
+import { PerlyPay, PerlyPayError } from "perly-pay";
+
+const pay = new PerlyPay(process.env.PERLY_PAY_SECRET_KEY!, { baseUrl: process.env.PERLY_PAY_API });
+const PRODUCT = process.env.PERLY_PAY_CREDITS_PRODUCT_ID!; // made once by a setup script
+
+// setup, once per mode:
+//   const product = await pay.products.create({ name: "API credits" });
+//   await pay.prices.create({ product: product.id, model: "credit_pack", unit_amount: 1000, credits: 1000 }); // $10.00
+
+export async function ensureCustomer(userId: string, email?: string) {
+  const found = await pay.customers.list({ external_id: userId, limit: 1 });
+  return found.data[0] ?? (await pay.customers.create({ external_id: userId, email }, { idempotencyKey: `customer-${userId}` }));
+}
+
+/** Spends `cost` credits for one request, once. `ok: false` means "top up". */
+export async function spend(userId: string, cost: number, requestId: string, action = "api") {
+  try {
+    const usage = await pay.credits.consume(userId, cost, { product: PRODUCT, action, idempotencyKey: `req-${userId}-${requestId}` });
+    return { ok: true as const, remaining: usage.balance };
+  } catch (e) {
+    const short = e instanceof PerlyPayError && (e.code === "insufficient_credits" || (e.code === "resource_missing" && e.param === "customer"));
+    if (!short) throw e;
+    await ensureCustomer(userId);
+    return { ok: false as const, topUp: await pay.credits.topUpUrl(userId, { product: PRODUCT }) };
+  }
+}
+```
+
+```ts
+// Hono middleware: spend before the work, 402 with the buyer's top-up page when short
+app.use("/v1/*", async (c, next) => {
+  const userId = await userFromApiKey(c.req.header("authorization")); // yours
+  const result = await spend(userId, 1, c.req.header("idempotency-key") ?? crypto.randomUUID());
+  if (!result.ok) return c.json({ error: "out_of_credits", top_up: result.topUp }, 402);
+  c.header("X-Credits-Remaining", String(result.remaining));
+  await next();
+});
+```
+
+The raw HTTP call, for any language:
+
+```bash
+curl -X POST https://pay.perly.io/api/v1/credits/consume \
+  -H "Authorization: Bearer $PERLY_PAY_SECRET_KEY" -H "Idempotency-Key: req-user42-123" \
+  -H "Content-Type: application/json" -d '{"customer_external_id": "user42", "credits": 1, "action": "api"}'
+```
+
+## Code (PHP)
+
+```php
+use Perly\Pay\Exception\InvalidRequestException;
+
+try {
+    $usage = $perly->credits->consume($userId, $cost, ['product' => $productId, 'action' => 'api', 'idempotency_key' => 'req-' . $userId . '-' . $requestId]);
+} catch (InvalidRequestException $e) {
+    if ($e->getErrorCode() !== 'insufficient_credits') throw $e;
+    http_response_code(402);
+    echo json_encode(['top_up' => $perly->credits->topUpUrl($userId, ['product' => $productId])]);
+    exit;
+}
+```
+
+## Pitfalls
+
+- Spending without an idempotency key: a retried request then charges twice. Use your request id; the same key returns the first spend.
+- Checking the balance and then spending as two steps to decide. `consume` alone refuses an overdraft; the balance is for display.
+- Reading `insufficient_credits` (409) as a 500. It is the normal "top up" case.
+- Doing the work before spending. Spend first; if the work then fails on your side, make it good by your own policy (a coupon, a free pack) — there is no "unconsume".
+- Credits are whole numbers (1 to 1 000 000 per call). Price small units as credits, not fractions.
+- A credit pack is bought, not renewed: no auto-debit. The buyer's top-up page and the low-balance letter do the asking.
+
+<!-- perly-pay:ground-rules:start -->
+## Ground rules (every Perly Pay integration)
+
+1. **Test mode first.** Build with a `sk_test_…` key: test networks, nothing real moves, `invoices.simulate` pays an invoice for you. Switch to `sk_live_…` only in the go-live step. Test and live are separate worlds: products, prices, customers, webhook endpoints and their secrets made with a test key do not exist in live.
+2. **The secret key stays on the server.** Read it from `PERLY_PAY_SECRET_KEY`. Never put it in a browser bundle, a mobile or desktop app, a bot's client, a public repo or a log. Software you ship checks licenses with `LicenseClient`, which needs no key.
+3. **Never trust the redirect.** A buyer landing on your `return_url` proves nothing. Grant access only from a verified `invoice.fulfilled` webhook, or from your server asking `entitlements.check`.
+4. **Grant on `invoice.fulfilled`, not `invoice.paid`.** Fulfilled comes once per invoice, after the payment cleared screening. A payment held for review is paid but not fulfilled.
+5. **Verify every webhook** on the raw body with the endpoint's `whsec_…` secret (`Perly-Signature`, five minutes of tolerance). A delivery can come twice: act once per event `id`. Answer 2xx fast; failures are retried for 72 hours.
+6. **Idempotency.** The SDK sends an `Idempotency-Key` on every POST and reuses it on retries. Pass your own (`order-<id>`, `req-<id>`) when your code may repeat an action, such as spending credits or opening an order's invoice.
+7. **Money is integers.** Fiat amounts are minor units next to a `currency`: `4900` is $49.00. Only `USD` and `EUR`. Never floats. On-chain amounts are integer strings in the asset's smallest unit.
+8. **Non-custodial, no auto-debit.** Buyers pay BTC, USDC or USDT straight to the seller's wallet; Perly Pay never holds money. Subscriptions renew by an invoice and reminders the buyer pays each period, never by pulling funds. Refunds are sent by the seller from their own wallet.
+9. **Use the SDK:** `npm install perly-pay` (TypeScript, zero dependencies, any runtime with `fetch`) or `composer require perly/perly-pay` (PHP 8.1+). Other languages call the REST API at `https://pay.perly.io/api/v1` with `Authorization: Bearer <key>`; the spec is at `https://pay.perly.io/api/v1/openapi.json`. Point the SDK at a local Pay with `PERLY_PAY_API` (`baseUrl` option).
+<!-- perly-pay:ground-rules:end -->
+
+## More
+
+- Recipe and runnable example (`examples/api-credits`): https://pay.perly.io/docs/recipe-api-credits
+- Sell credits: https://pay.perly.io/docs/credits · Price models: https://pay.perly.io/docs/price-models · API: https://pay.perly.io/docs/api

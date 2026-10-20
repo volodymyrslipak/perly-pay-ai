@@ -1,0 +1,112 @@
+---
+description: "Sell a SaaS plan or membership as a crypto subscription with Perly Pay — every period is an invoice the buyer pays in bitcoin, USDC or USDT, with reminders; there is no auto-debit. Use when the user wants monthly or yearly plans, a Pro tier, memberships, recurring billing, trials, or \"subscriptions\" paid in crypto. Creates the subscription price, subscribes a user through their first invoice, gates features with an entitlement check, reacts to renewal and past-due events, and gives buyers the portal to pay renewals or cancel."
+globs:
+alwaysApply: false
+---
+
+<!-- Generated from skills/: edit the skills, not this file. -->
+
+# Sell a subscription (renewed by invoice)
+
+## When to use
+
+The user sells access for a period: a Pro plan, a membership, a yearly licence. Crypto cannot be pulled from a wallet, so **there is no auto-debit, ever**: before each period ends Perly Pay emails the buyer a renewal invoice, then reminders until it is paid. Your app decides access by asking Perly Pay, not by counting days itself.
+
+## Steps
+
+1. **Create the plan once** per mode: a product and a price with `model: "subscription"`, `unit_amount` and `recurring: { interval: "month" | "year" | "week" | "day" | "quarter" | "custom_days", trial_days?, grace_days? }`. Monthly and yearly are two prices of one product.
+2. **Map users to customers** by `external_id` (your user id) and email — the email is where renewal invoices and reminders go, so it must be real.
+3. **Subscribe through the first invoice:** `invoices.create({ line_items: [{ price }], customer, metadata: { user_id }, return_url })` opens the subscription (`status: "unpaid"`, waiting) and its first invoice; redirect the buyer to `invoice.url`. Paying it makes the subscription `active`. (A checkout session with the same price works too.)
+4. **Gate features with one call:** `entitlements.check({ customer_external_id: userId, product })` → `has_access` and `ends_at`. Call it on the server (cache for a minute at most), never trust a client flag.
+5. **Listen** (see `verify-webhooks`): `invoice.fulfilled` (first payment and every renewal), `subscription.renewal_invoice_opened` (show "renewal due"), `subscription.past_due` / `subscription.unpaid` (warn, then lock), `subscription.canceled` and `subscription.ended`. Store the subscription id on your user from `event.data.object.subscription` of the first `invoice.fulfilled`.
+6. **Let buyers manage it:** `portalSessions.create({ customer, return_url })` gives a link where they pay the open renewal, prepay periods or cancel. Cancel from your app with `subscriptions.cancel(id, { at_period_end: true })`.
+7. **Plan changes:** `subscriptions.update(id, { price })` — upgrades are invoiced now, prorated; downgrades start next period.
+8. **Grace days:** the entitlement covers the paid period. Inside grace days the subscription is `past_due`; whether to keep access then is your choice — read `subscriptions.retrieve(id).status`.
+9. **Test:** `invoices.simulate` the first invoice, then check access. The renewal invoice can be simulated too once `subscription.renewal_invoice_opened` arrives (or `subscriptions.prepay(id, { periods: 1 })` opens one now).
+
+## Code (Node, TypeScript)
+
+```ts
+import { PerlyPay } from "perly-pay";
+
+const pay = new PerlyPay(process.env.PERLY_PAY_SECRET_KEY!, { baseUrl: process.env.PERLY_PAY_API });
+const PRODUCT = process.env.PERLY_PAY_PRO_PRODUCT_ID!;
+const PRICE = process.env.PERLY_PAY_PRO_MONTHLY_PRICE_ID!;
+
+// setup, once per mode:
+//   const product = await pay.products.create({ name: "Pro" });
+//   await pay.prices.create({ product: product.id, model: "subscription", unit_amount: 900, recurring: { interval: "month", trial_days: 0, grace_days: 3 } });
+
+export async function subscribe(user: { id: string; email: string }) {
+  const found = await pay.customers.list({ external_id: user.id, limit: 1 });
+  const customer = found.data[0] ?? (await pay.customers.create({ external_id: user.id, email: user.email }));
+  const invoice = await pay.invoices.create(
+    { line_items: [{ price: PRICE }], customer: customer.id, metadata: { user_id: user.id }, return_url: `${process.env.APP_URL}/billing` },
+    { idempotencyKey: `subscribe-${user.id}-${new Date().toISOString().slice(0, 10)}` },
+  );
+  return invoice.url; // send the buyer here
+}
+
+export async function isPro(userId: string): Promise<boolean> {
+  const access = await pay.entitlements.check({ customer_external_id: userId, product: PRODUCT });
+  return access.has_access;
+}
+
+export async function manageUrl(customerId: string) {
+  return (await pay.portalSessions.create({ customer: customerId, return_url: `${process.env.APP_URL}/billing` })).url;
+}
+```
+
+```ts
+// Next.js: app/api/webhooks/perly/route.ts (the parts specific to subscriptions)
+const event = pay.webhooks.verify(await request.text(), request.headers.get("perly-signature"), process.env.PERLY_PAY_WEBHOOK_SECRET!);
+switch (event.type) {
+  case "invoice.fulfilled": {
+    const invoice = event.data.object as { subscription: string | null; metadata: Record<string, string> };
+    if (invoice.subscription) await saveSubscription(invoice.metadata.user_id, invoice.subscription); // yours
+    break;
+  }
+  case "subscription.past_due":
+    await notifyRenewalLate(event.object_id!); // yours: "your renewal is due"
+    break;
+  case "subscription.ended":
+    await downgrade(event.object_id!); // yours
+    break;
+}
+```
+
+## Code (PHP)
+
+```php
+$check = $perly->entitlements->check(['customer_external_id' => (string) $user->id, 'product' => getenv('PERLY_PAY_PRO_PRODUCT_ID')]);
+if (!$check['has_access']) {
+    $portal = $perly->portalSessions->create(['customer' => $check['customer'], 'return_url' => 'https://example.com/billing']);
+    // show "Renew" linking to $portal['url'] — only when $check['customer'] is not null; otherwise subscribe first
+}
+```
+
+## Pitfalls
+
+- Promising "we'll charge your wallet automatically". Nothing is pulled; the buyer pays each renewal invoice. Say "renews by invoice".
+- Counting days yourself. Ask `entitlements.check`; it already knows paid periods, prepaid periods, upgrades and refunds.
+- A fake or missing customer email: renewal invoices and reminders go there. Without it renewals are missed.
+- Locking at the first missed second. `grace_days` exists so a late payer keeps working while the reminder lands; decide access for `past_due` explicitly.
+- Creating a new subscription on every "Upgrade" click. Change the price of the existing one with `subscriptions.update`.
+- Test subscriptions do not exist in live: recreate the product and prices with the live key.
+
+## Ground rules (every Perly Pay integration)
+
+1. **Test mode first.** Build with a `sk_test_…` key: test networks, nothing real moves, `invoices.simulate` pays an invoice for you. Switch to `sk_live_…` only in the go-live step. Test and live are separate worlds: products, prices, customers, webhook endpoints and their secrets made with a test key do not exist in live.
+2. **The secret key stays on the server.** Read it from `PERLY_PAY_SECRET_KEY`. Never put it in a browser bundle, a mobile or desktop app, a bot's client, a public repo or a log. Software you ship checks licenses with `LicenseClient`, which needs no key.
+3. **Never trust the redirect.** A buyer landing on your `return_url` proves nothing. Grant access only from a verified `invoice.fulfilled` webhook, or from your server asking `entitlements.check`.
+4. **Grant on `invoice.fulfilled`, not `invoice.paid`.** Fulfilled comes once per invoice, after the payment cleared screening. A payment held for review is paid but not fulfilled.
+5. **Verify every webhook** on the raw body with the endpoint's `whsec_…` secret (`Perly-Signature`, five minutes of tolerance). A delivery can come twice: act once per event `id`. Answer 2xx fast; failures are retried for 72 hours.
+6. **Idempotency.** The SDK sends an `Idempotency-Key` on every POST and reuses it on retries. Pass your own (`order-<id>`, `req-<id>`) when your code may repeat an action, such as spending credits or opening an order's invoice.
+7. **Money is integers.** Fiat amounts are minor units next to a `currency`: `4900` is $49.00. Only `USD` and `EUR`. Never floats. On-chain amounts are integer strings in the asset's smallest unit.
+8. **Non-custodial, no auto-debit.** Buyers pay BTC, USDC or USDT straight to the seller's wallet; Perly Pay never holds money. Subscriptions renew by an invoice and reminders the buyer pays each period, never by pulling funds. Refunds are sent by the seller from their own wallet.
+9. **Use the SDK:** `npm install perly-pay` (TypeScript, zero dependencies, any runtime with `fetch`) or `composer require perly/perly-pay` (PHP 8.1+). Other languages call the REST API at `https://pay.perly.io/api/v1` with `Authorization: Bearer <key>`; the spec is at `https://pay.perly.io/api/v1/openapi.json`. Point the SDK at a local Pay with `PERLY_PAY_API` (`baseUrl` option).
+
+## More
+
+- Recipe and runnable example (`examples/saas-subscription`): https://pay.perly.io/docs/recipe-saas-subscription
+- Subscriptions and reminders: https://pay.perly.io/docs/subscriptions

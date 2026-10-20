@@ -1,0 +1,36 @@
+---
+description: "Perly Pay: accepting bitcoin, USDC or USDT payments in this project — checkout, credits, subscriptions renewed by invoice, license keys, bot access, paid MCP tools, webhooks, going live."
+globs:
+alwaysApply: false
+---
+
+<!-- Generated from skills/: edit the skills, not this file. -->
+
+# Perly Pay
+
+Crypto payments straight to the seller's wallet: bitcoin, USDC and USDT, flat plans, 0% of volume. SDKs: `perly-pay` (npm), `perly/perly-pay` (Composer). Docs: https://pay.perly.io/docs/recipes
+
+## Ground rules (every Perly Pay integration)
+
+1. **Test mode first.** Build with a `sk_test_…` key: test networks, nothing real moves, `invoices.simulate` pays an invoice for you. Switch to `sk_live_…` only in the go-live step. Test and live are separate worlds: products, prices, customers, webhook endpoints and their secrets made with a test key do not exist in live.
+2. **The secret key stays on the server.** Read it from `PERLY_PAY_SECRET_KEY`. Never put it in a browser bundle, a mobile or desktop app, a bot's client, a public repo or a log. Software you ship checks licenses with `LicenseClient`, which needs no key.
+3. **Never trust the redirect.** A buyer landing on your `return_url` proves nothing. Grant access only from a verified `invoice.fulfilled` webhook, or from your server asking `entitlements.check`.
+4. **Grant on `invoice.fulfilled`, not `invoice.paid`.** Fulfilled comes once per invoice, after the payment cleared screening. A payment held for review is paid but not fulfilled.
+5. **Verify every webhook** on the raw body with the endpoint's `whsec_…` secret (`Perly-Signature`, five minutes of tolerance). A delivery can come twice: act once per event `id`. Answer 2xx fast; failures are retried for 72 hours.
+6. **Idempotency.** The SDK sends an `Idempotency-Key` on every POST and reuses it on retries. Pass your own (`order-<id>`, `req-<id>`) when your code may repeat an action, such as spending credits or opening an order's invoice.
+7. **Money is integers.** Fiat amounts are minor units next to a `currency`: `4900` is $49.00. Only `USD` and `EUR`. Never floats. On-chain amounts are integer strings in the asset's smallest unit.
+8. **Non-custodial, no auto-debit.** Buyers pay BTC, USDC or USDT straight to the seller's wallet; Perly Pay never holds money. Subscriptions renew by an invoice and reminders the buyer pays each period, never by pulling funds. Refunds are sent by the seller from their own wallet.
+9. **Use the SDK:** `npm install perly-pay` (TypeScript, zero dependencies, any runtime with `fetch`) or `composer require perly/perly-pay` (PHP 8.1+). Other languages call the REST API at `https://pay.perly.io/api/v1` with `Authorization: Bearer <key>`; the spec is at `https://pay.perly.io/api/v1/openapi.json`. Point the SDK at a local Pay with `PERLY_PAY_API` (`baseUrl` option).
+
+## Recipes
+
+Each has its own rule in this folder with the steps, code and pitfalls:
+
+- **Add a crypto checkout with Perly Pay** — rule `perly-pay-add-crypto-checkout`. The user wants buyers to pay for something in their app with bitcoin or dollar stablecoins.
+- **Sell credits and spend them per request** — rule `perly-pay-sell-credits`. The user charges for usage: API calls, AI generations, exports, minutes.
+- **Sell a subscription (renewed by invoice)** — rule `perly-pay-sell-subscription`. The user sells access for a period: a Pro plan, a membership, a yearly licence.
+- **Sell software with license keys** — rule `perly-pay-sell-license-keys`. The user ships software that runs on the buyer's machine and wants paid copies unlocked by a key.
+- **Sell bot access (Telegram, Discord)** — rule `perly-pay-sell-bot-access`. A bot sells something to chat users: premium commands, a role, an invite to a private group, a monthly membership.
+- **Paid MCP tools (credits per call)** — rule `perly-pay-paid-mcp-tools`. The user runs an MCP server and wants agents to pay per tool call.
+- **Verify Perly Pay webhooks** — rule `perly-pay-verify-webhooks`. Any time code receives Perly Pay events.
+- **Test, then go live** — rule `perly-pay-test-and-go-live`. Before anyone pays real money, and again on the day the integration switches to live.

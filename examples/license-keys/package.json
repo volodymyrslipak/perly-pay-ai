@@ -1,0 +1,25 @@
+{
+  "name": "perly-pay-example-license-keys",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A CLI app unlocked by a license key bought for crypto with Perly Pay. The app holds no secret key.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "setup": "tsx scripts/setup.ts",
+    "buy-test": "tsx scripts/buy-test.ts",
+    "app": "tsx src/cli.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "perly-pay": "^0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=20.12"
+  }
+}

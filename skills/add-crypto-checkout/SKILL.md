@@ -1,0 +1,136 @@
+---
+name: add-crypto-checkout
+description: Add a crypto checkout (bitcoin, USDC, USDT) to an existing web app or API with Perly Pay, paid straight to the seller's wallet. Use when the user wants to accept crypto, take payments, sell a product or service, add a "Pay with crypto" button, a payment link or a checkout page, or mentions Perly Pay. Detects the framework (Next.js, Express, Hono, Fastify, Laravel, plain PHP), starts in test mode, creates the product and price, opens an invoice or checkout session, adds a webhook route that verifies the signature and grants access only on invoice.fulfilled, then walks the go-live checklist.
+license: MIT
+metadata:
+  author: Perly
+  version: "0.1.0"
+  docs: https://pay.perly.io/docs/recipes
+---
+
+# Add a crypto checkout with Perly Pay
+
+## When to use
+
+The user wants buyers to pay for something in their app with bitcoin or dollar stablecoins. The money goes straight to the seller's own wallet; Perly Pay watches the chain and tells the app by webhook. For credits, subscriptions, license keys, bots or paid MCP tools, use the matching `sell-*` or `paid-mcp-tools` skill on top of this one.
+
+## Steps
+
+1. **Detect the stack.** Read `package.json` (`next`, `express`, `hono`, `fastify`, `@nestjs/core`) or `composer.json` (`laravel/framework`, `symfony/*`). WordPress shop: point to the WooCommerce plugin (`/docs/woocommerce`) instead of code; WHMCS: `/docs/whmcs`; no-code: Zapier or Make. Other languages: the REST API.
+2. **Install the SDK** (`npm install perly-pay` or `composer require perly/perly-pay`) and add `PERLY_PAY_SECRET_KEY=sk_test_…` and `PERLY_PAY_WEBHOOK_SECRET=` to `.env.example` and the local env file. Ask the user for a test key from Dashboard → Developers → API keys; never invent one and never commit one.
+3. **Create the product and price once** — a setup script, not on every request. Keep the ids in env or config (`PERLY_PAY_PRICE_ID`). A one-off sale is `model: "one_time"` with `unit_amount` in minor units.
+4. **Open the payment on your server.** Either a **payment link** (a fixed URL, no code per buyer, made once) or, per order, an **invoice** with `customer`, your `metadata` (`order_id`, `user_id`) and a `return_url`, then redirect to `invoice.url`. A **checkout session** does the same for several line items. Pass `idempotencyKey: "order-<id>"` so a double click opens one invoice.
+5. **Add the webhook route** that verifies `Perly-Signature` on the raw body, ignores event ids it has seen, and on `invoice.fulfilled` reads `event.data.object.metadata` to grant access or ship the order. See the `verify-webhooks` skill for every framework.
+6. **Register the endpoint** in Dashboard → Developers → Webhooks, or with `webhookEndpoints.create`, for `invoice.fulfilled` (plus anything else you show the user). Store the `whsec_…` it returns once.
+7. **Test it** without a wallet: create an invoice with the test key, call `invoices.simulate(id)`, and check the route granted access. The `test-and-go-live` skill has the full checklist.
+8. **The thank-you page shows status, not access.** It may read the invoice (`invoices.retrieve`) to say "paid, unlocking…", but the unlock itself comes from the webhook.
+
+## Code (Node, TypeScript)
+
+```ts
+// lib/perly.ts — one client for the app
+import { PerlyPay } from "perly-pay";
+
+export const pay = new PerlyPay(process.env.PERLY_PAY_SECRET_KEY!, {
+  baseUrl: process.env.PERLY_PAY_API, // unset = https://pay.perly.io
+});
+```
+
+```ts
+// scripts/perly-setup.ts — run once per mode: npx tsx scripts/perly-setup.ts
+import { pay } from "../lib/perly";
+
+const product = await pay.products.create({ name: "Pro export" });
+const price = await pay.prices.create({ product: product.id, model: "one_time", unit_amount: 1900, currency: "USD" }); // $19.00
+const link = await pay.paymentLinks.create({ price: price.id, success_url: "https://example.com/thanks" });
+console.log(`PERLY_PAY_PRICE_ID=${price.id}\npayment link: ${link.url}`);
+```
+
+```ts
+// Next.js: app/api/checkout/route.ts — an invoice per order
+import { pay } from "@/lib/perly";
+
+export async function POST(request: Request) {
+  const user = await currentUser(request); // yours
+  const orderId = crypto.randomUUID();
+  const invoice = await pay.invoices.create(
+    {
+      line_items: [{ price: process.env.PERLY_PAY_PRICE_ID! }],
+      customer: { email: user.email },
+      metadata: { order_id: orderId, user_id: user.id },
+      return_url: `${process.env.APP_URL}/thanks?order=${orderId}`,
+    },
+    { idempotencyKey: `order-${orderId}` },
+  );
+  return Response.json({ url: invoice.url });
+}
+```
+
+```ts
+// Next.js: app/api/webhooks/perly/route.ts
+import { pay } from "@/lib/perly";
+
+export async function POST(request: Request) {
+  const raw = await request.text(); // the raw body, before any JSON.parse
+  let event;
+  try {
+    event = pay.webhooks.verify(raw, request.headers.get("perly-signature"), process.env.PERLY_PAY_WEBHOOK_SECRET!);
+  } catch {
+    return new Response("bad signature", { status: 400 });
+  }
+  if (await alreadyHandled(event.id)) return new Response(null, { status: 204 }); // yours: a unique row per event id
+  if (event.type === "invoice.fulfilled") {
+    const invoice = event.data.object as { id: string; metadata: Record<string, string> };
+    await grantAccess(invoice.metadata.user_id, invoice.metadata.order_id); // yours
+  }
+  await markHandled(event.id);
+  return new Response(null, { status: 204 });
+}
+```
+
+Express needs the raw bytes on that one route: `app.post("/webhooks/perly", express.raw({ type: "application/json" }), handler)` and `pay.webhooks.verify(req.body, req.header("Perly-Signature"), secret)`.
+
+## Code (PHP)
+
+```php
+use Perly\Pay\PerlyPay;
+
+$perly = new PerlyPay(getenv('PERLY_PAY_SECRET_KEY'));
+$invoice = $perly->invoices->create([
+    'line_items' => [['price' => getenv('PERLY_PAY_PRICE_ID')]],
+    'customer' => ['email' => $user->email],
+    'metadata' => ['order_id' => (string) $order->id, 'user_id' => (string) $user->id],
+    'return_url' => 'https://example.com/thanks',
+], ['idempotency_key' => 'order-' . $order->id]);
+header('Location: ' . $invoice['url'], true, 303);
+```
+
+The PHP webhook handler is in the `verify-webhooks` skill.
+
+## Pitfalls
+
+- Granting access on the redirect or on `invoice.paid`. Only `invoice.fulfilled` (or `entitlements.check`) means "deliver".
+- Parsing JSON before verifying: re-serialised JSON never matches the signature. Verify the raw text or bytes.
+- Creating a product and price on every request. Create once per mode, keep the ids.
+- Floats or strings for prices: `unit_amount: 19.99` is refused; write `1999`. Currency is `USD` or `EUR` only.
+- Using the test price id with a live key: ids are per mode. Recreate products, prices, links and the webhook endpoint in live.
+- A webhook URL on `localhost` against hosted Perly Pay: it needs a public https URL (a tunnel while developing). Until then, `entitlements.check` or reading the invoice tells you the state.
+
+<!-- perly-pay:ground-rules:start -->
+## Ground rules (every Perly Pay integration)
+
+1. **Test mode first.** Build with a `sk_test_…` key: test networks, nothing real moves, `invoices.simulate` pays an invoice for you. Switch to `sk_live_…` only in the go-live step. Test and live are separate worlds: products, prices, customers, webhook endpoints and their secrets made with a test key do not exist in live.
+2. **The secret key stays on the server.** Read it from `PERLY_PAY_SECRET_KEY`. Never put it in a browser bundle, a mobile or desktop app, a bot's client, a public repo or a log. Software you ship checks licenses with `LicenseClient`, which needs no key.
+3. **Never trust the redirect.** A buyer landing on your `return_url` proves nothing. Grant access only from a verified `invoice.fulfilled` webhook, or from your server asking `entitlements.check`.
+4. **Grant on `invoice.fulfilled`, not `invoice.paid`.** Fulfilled comes once per invoice, after the payment cleared screening. A payment held for review is paid but not fulfilled.
+5. **Verify every webhook** on the raw body with the endpoint's `whsec_…` secret (`Perly-Signature`, five minutes of tolerance). A delivery can come twice: act once per event `id`. Answer 2xx fast; failures are retried for 72 hours.
+6. **Idempotency.** The SDK sends an `Idempotency-Key` on every POST and reuses it on retries. Pass your own (`order-<id>`, `req-<id>`) when your code may repeat an action, such as spending credits or opening an order's invoice.
+7. **Money is integers.** Fiat amounts are minor units next to a `currency`: `4900` is $49.00. Only `USD` and `EUR`. Never floats. On-chain amounts are integer strings in the asset's smallest unit.
+8. **Non-custodial, no auto-debit.** Buyers pay BTC, USDC or USDT straight to the seller's wallet; Perly Pay never holds money. Subscriptions renew by an invoice and reminders the buyer pays each period, never by pulling funds. Refunds are sent by the seller from their own wallet.
+9. **Use the SDK:** `npm install perly-pay` (TypeScript, zero dependencies, any runtime with `fetch`) or `composer require perly/perly-pay` (PHP 8.1+). Other languages call the REST API at `https://pay.perly.io/api/v1` with `Authorization: Bearer <key>`; the spec is at `https://pay.perly.io/api/v1/openapi.json`. Point the SDK at a local Pay with `PERLY_PAY_API` (`baseUrl` option).
+<!-- perly-pay:ground-rules:end -->
+
+## More
+
+- Docs: https://pay.perly.io/docs/quick-start · API: https://pay.perly.io/docs/api · Webhooks: https://pay.perly.io/docs/webhooks
+- Recipes and runnable examples: https://pay.perly.io/docs/recipes

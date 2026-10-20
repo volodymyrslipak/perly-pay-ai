@@ -1,0 +1,26 @@
+{
+  "name": "perly-pay-example-paid-mcp-server",
+  "private": true,
+  "version": "0.1.0",
+  "description": "An MCP server whose tools cost credits, bought for crypto with Perly Pay.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "setup": "tsx scripts/setup.ts",
+    "start": "tsx src/server.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "perly-pay": "^0.1.0",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=20.12"
+  }
+}

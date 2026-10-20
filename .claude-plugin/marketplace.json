@@ -1,0 +1,14 @@
+{
+  "name": "perly",
+  "description": "Perly's plugins for AI coding assistants.",
+  "owner": {
+    "name": "Perly"
+  },
+  "plugins": [
+    {
+      "name": "perly-pay",
+      "source": "./",
+      "description": "Take crypto payments with Perly Pay in one prompt: checkout, credits, subscriptions, license keys, bot access, paid MCP tools."
+    }
+  ]
+}

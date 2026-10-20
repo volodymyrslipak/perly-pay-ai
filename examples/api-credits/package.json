@@ -1,0 +1,26 @@
+{
+  "name": "perly-pay-example-api-credits",
+  "private": true,
+  "version": "0.1.0",
+  "description": "An API that sells prepaid credits for crypto with Perly Pay and spends one per request (Hono).",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "setup": "tsx scripts/setup.ts",
+    "start": "tsx src/server.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.5",
+    "hono": "^4.13.13",
+    "perly-pay": "^0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=20.12"
+  }
+}
