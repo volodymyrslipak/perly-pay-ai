@@ -32,8 +32,8 @@ server.registerTool("top_up", { description: "A payment link where a person buys
 server.registerTool(
   "word_stats",
   { description: "Count words and sentences in a text and estimate reading time. Costs 1 credit.", inputSchema: { text: z.string().max(100_000) } },
-  async ({ text: input }, extra) => {
-    const refused = await charge(USER, 1, "word_stats", extra.requestId); // spend first, then work
+  async ({ text: input }) => {
+    const refused = await charge(USER, 1, "word_stats"); // spend first, then work
     if (refused) return { ...text(refused), isError: true };
     const words = input.split(/\s+/).filter(Boolean).length;
     const sentences = input.split(/[.!?]+/).filter((s) => s.trim()).length;
@@ -44,8 +44,8 @@ server.registerTool(
 server.registerTool(
   "summarize",
   { description: "The first sentences of a text, as a short summary. Costs 3 credits.", inputSchema: { text: z.string().max(100_000), sentences: z.number().int().min(1).max(10).default(2) } },
-  async ({ text: input, sentences }, extra) => {
-    const refused = await charge(USER, 3, "summarize", extra.requestId);
+  async ({ text: input, sentences }) => {
+    const refused = await charge(USER, 3, "summarize");
     if (refused) return { ...text(refused), isError: true };
     return text((input.match(/[^.!?]+[.!?]+/g) ?? [input]).slice(0, sentences).join(" ").trim());
   },

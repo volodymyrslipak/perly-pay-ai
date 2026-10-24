@@ -4,7 +4,7 @@ description: Add a crypto checkout (bitcoin, USDC, USDT) to an existing web app 
 license: MIT
 metadata:
   author: Perly
-  version: "0.1.0"
+  version: "0.1.1"
   docs: https://pay.perly.io/docs/recipes
 ---
 
@@ -17,7 +17,7 @@ The user wants buyers to pay for something in their app with bitcoin or dollar s
 ## Steps
 
 1. **Detect the stack.** Read `package.json` (`next`, `express`, `hono`, `fastify`, `@nestjs/core`) or `composer.json` (`laravel/framework`, `symfony/*`). WordPress shop: point to the WooCommerce plugin (`/docs/woocommerce`) instead of code; WHMCS: `/docs/whmcs`; no-code: Zapier or Make. Other languages: the REST API.
-2. **Install the SDK** (`npm install perly-pay` or `composer require perly/perly-pay`) and add `PERLY_PAY_SECRET_KEY=sk_test_…` and `PERLY_PAY_WEBHOOK_SECRET=` to `.env.example` and the local env file. Ask the user for a test key from Dashboard → Developers → API keys; never invent one and never commit one.
+2. **Install the SDK** (`npm install perly-pay`; in PHP there is nothing of ours to install yet: call the API with Guzzle or Laravel's `Http`, as below) and add `PERLY_PAY_SECRET_KEY=sk_test_…` and `PERLY_PAY_WEBHOOK_SECRET=` to `.env.example` and the local env file. Ask the user for a test key from Dashboard → Developers → API keys; never invent one and never commit one.
 3. **Create the product and price once** — a setup script, not on every request. Keep the ids in env or config (`PERLY_PAY_PRICE_ID`). A one-off sale is `model: "one_time"` with `unit_amount` in minor units.
 4. **Open the payment on your server.** Either a **payment link** (a fixed URL, no code per buyer, made once) or, per order, an **invoice** with `customer`, your `metadata` (`order_id`, `user_id`) and a `return_url`, then redirect to `invoice.url`. A **checkout session** does the same for several line items. Pass `idempotencyKey: "order-<id>"` so a double click opens one invoice.
 5. **Add the webhook route** that verifies `Perly-Signature` on the raw body, ignores event ids it has seen, and on `invoice.fulfilled` reads `event.data.object.metadata` to grant access or ship the order. See the `verify-webhooks` skill for every framework.
@@ -93,19 +93,26 @@ Express needs the raw bytes on that one route: `app.post("/webhooks/perly", expr
 ## Code (PHP)
 
 ```php
-use Perly\Pay\PerlyPay;
+// perly/perly-pay is not on Packagist yet: the REST API with Guzzle (composer require guzzlehttp/guzzle).
+$perly = new \GuzzleHttp\Client([
+    'base_uri' => (getenv('PERLY_PAY_API') ?: 'https://pay.perly.io') . '/api/v1/',
+    'headers' => ['Authorization' => 'Bearer ' . getenv('PERLY_PAY_SECRET_KEY'), 'Accept' => 'application/json'],
+]);
 
-$perly = new PerlyPay(getenv('PERLY_PAY_SECRET_KEY'));
-$invoice = $perly->invoices->create([
-    'line_items' => [['price' => getenv('PERLY_PAY_PRICE_ID')]],
-    'customer' => ['email' => $user->email],
-    'metadata' => ['order_id' => (string) $order->id, 'user_id' => (string) $user->id],
-    'return_url' => 'https://example.com/thanks',
-], ['idempotency_key' => 'order-' . $order->id]);
+$response = $perly->post('invoices', [
+    'json' => [
+        'line_items' => [['price' => getenv('PERLY_PAY_PRICE_ID')]],
+        'customer' => ['email' => $user->email],
+        'metadata' => ['order_id' => (string) $order->id, 'user_id' => (string) $user->id],
+        'return_url' => 'https://example.com/thanks',
+    ],
+    'headers' => ['Idempotency-Key' => 'order-' . $order->id],
+]);
+$invoice = json_decode((string) $response->getBody(), true);
 header('Location: ' . $invoice['url'], true, 303);
 ```
 
-The PHP webhook handler is in the `verify-webhooks` skill.
+Laravel: the same call is `Http::withToken(env('PERLY_PAY_SECRET_KEY'))->withHeaders(['Idempotency-Key' => …])->post('https://pay.perly.io/api/v1/invoices', [...])->throw()->json()`, and `npx perly-pay init` writes the controller, routes and button. The PHP webhook handler is in the `verify-webhooks` skill.
 
 ## Pitfalls
 
@@ -124,10 +131,10 @@ The PHP webhook handler is in the `verify-webhooks` skill.
 3. **Never trust the redirect.** A buyer landing on your `return_url` proves nothing. Grant access only from a verified `invoice.fulfilled` webhook, or from your server asking `entitlements.check`.
 4. **Grant on `invoice.fulfilled`, not `invoice.paid`.** Fulfilled comes once per invoice, after the payment cleared screening. A payment held for review is paid but not fulfilled.
 5. **Verify every webhook** on the raw body with the endpoint's `whsec_…` secret (`Perly-Signature`, five minutes of tolerance). A delivery can come twice: act once per event `id`. Answer 2xx fast; failures are retried for 72 hours.
-6. **Idempotency.** The SDK sends an `Idempotency-Key` on every POST and reuses it on retries. Pass your own (`order-<id>`, `req-<id>`) when your code may repeat an action, such as spending credits or opening an order's invoice.
+6. **Idempotency.** The SDK sends an `Idempotency-Key` on every POST and reuses it on retries (without the SDK, send one yourself). Pass your own (`order-<id>`, `req-<id>`) when your code may repeat an action, such as spending credits or opening an order's invoice.
 7. **Money is integers.** Fiat amounts are minor units next to a `currency`: `4900` is $49.00. Only `USD` and `EUR`. Never floats. On-chain amounts are integer strings in the asset's smallest unit.
 8. **Non-custodial, no auto-debit.** Buyers pay BTC, USDC or USDT straight to the seller's wallet; Perly Pay never holds money. Subscriptions renew by an invoice and reminders the buyer pays each period, never by pulling funds. Refunds are sent by the seller from their own wallet.
-9. **Use the SDK:** `npm install perly-pay` (TypeScript, zero dependencies, any runtime with `fetch`) or `composer require perly/perly-pay` (PHP 8.1+). Other languages call the REST API at `https://pay.perly.io/api/v1` with `Authorization: Bearer <key>`; the spec is at `https://pay.perly.io/api/v1/openapi.json`. Point the SDK at a local Pay with `PERLY_PAY_API` (`baseUrl` option).
+9. **Use the SDK:** `npm install perly-pay` (TypeScript, zero dependencies, any runtime with `fetch`). PHP: `perly/perly-pay` is not on Packagist yet, so call the REST API with Guzzle, curl or Laravel's `Http` client and check webhook signatures by hand (the `verify-webhooks` skill shows how); `npx perly-pay init` writes a Laravel integration that does both. Other languages call the REST API at `https://pay.perly.io/api/v1` with `Authorization: Bearer <key>`; the spec is at `https://pay.perly.io/api/v1/openapi.json`. Point the SDK at a local Pay with `PERLY_PAY_API` (`baseUrl` option).
 <!-- perly-pay:ground-rules:end -->
 
 ## More

@@ -20,7 +20,7 @@ Recipe: <https://pay.perly.io/docs/recipe-api-credits> · Skill: `sell-credits` 
 
 ## What to look at
 
-- `src/perly.ts` — find-or-create the customer by your user id, the buyer's own top-up page (`credits.topUpUrl`), the balance (`credits.balance`), and `spend()`: `credits.consume` with an idempotency key, with `insufficient_credits` treated as "top up". A retry with the same key returns the first spend, even days later.
+- `src/perly.ts` — find-or-create the customer by your user id, the buyer's own top-up page (`credits.topUpUrl`), the balance (`credits.balance`), and `spend()`: `credits.consume` with an idempotency key, with `insufficient_credits` treated as "top up". A retry with the same key returns the first spend, even days later, so the key is made on the server for each request, never taken from the caller.
 - `src/server.ts` — spend before work, `402` with the link, and a webhook route that verifies `Perly-Signature` on the raw body.
 - Webhooks are optional here (the balance is read from Perly Pay). To get "credits added", expose the server (`cloudflared tunnel --url http://localhost:8787`) and run `PUBLIC_URL=https://… npm run setup`, which also prints `PERLY_PAY_WEBHOOK_SECRET`.
 

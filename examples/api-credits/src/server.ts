@@ -42,7 +42,9 @@ app.get("/balance", async (c) => c.json({ credits: await balance(c.get("userId")
 // Spend first, then work: a crash after spending never gives the work away twice.
 app.use("/v1/*", async (c, next) => {
   const userId = c.get("userId");
-  const requestId = c.req.header("idempotency-key") ?? randomUUID(); // a client's retry sends the same key
+  // Made here, one per request. Never the caller's Idempotency-Key: the same key again returns the first
+  // spend as a success, so a caller resending one key would get the work again without paying.
+  const requestId = randomUUID();
   const result = await spend(userId, COST, requestId);
   c.header("X-Credits-Remaining", String(result.remaining));
   if (!result.ok) return c.json({ error: "out_of_credits", credits: result.remaining, top_up: (await topUp(userId)).url }, 402);

@@ -15,6 +15,8 @@ Buyers pay bitcoin, USDC or USDT straight to your wallet. Flat plans, 0% of volu
 | `verify-webhooks` | A correct webhook route in Next.js, Express, Hono, Fastify, Laravel or plain PHP |
 | `test-and-go-live` | Simulated payments in test mode, then the live checklist |
 
+Node projects use the SDK (`npm install perly-pay`). PHP's SDK, `perly/perly-pay`, is not on Packagist yet, so until it is the skills' PHP calls the REST API with Guzzle, Laravel's `Http` or WordPress's `wp_remote_post`, and checks webhook signatures with a short function written out in `verify-webhooks`. Nothing in them asks for a package that cannot be installed.
+
 ## Claude Code
 
 ```bash

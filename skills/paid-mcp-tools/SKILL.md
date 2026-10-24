@@ -4,7 +4,7 @@ description: Charge for an MCP server's tools per call with Perly Pay credits �
 license: MIT
 metadata:
   author: Perly
-  version: "0.1.0"
+  version: "0.1.1"
   docs: https://pay.perly.io/docs/recipe-paid-mcp-server
 ---
 
@@ -18,7 +18,7 @@ The user runs an MCP server and wants agents to pay per tool call. The agent nev
 
 1. **Create a credit pack** once per mode (`model: "credit_pack"`, `unit_amount`, `credits`), as in `sell-credits`. Give each tool a cost in credits (search = 1, report = 10).
 2. **Identify the caller.** Remote (HTTP) servers: an API key you issue per user, sent as `Authorization: Bearer …`, mapped to your user id. Local (stdio) servers: the user's own key in the server's `env` (`MY_SERVICE_API_KEY`), never the Perly Pay secret key. Your server — the only place holding `PERLY_PAY_SECRET_KEY` — maps that user to a customer `external_id`.
-3. **Wrap every paid tool:** `credits.consume(user, cost, { action: <tool name>, idempotencyKey: "mcp-<session id>-<request id>" })` → run the tool. Spend before running so a crash cannot give free work twice.
+3. **Wrap every paid tool:** `credits.consume(user, cost, { action: <tool name>, idempotencyKey: "mcp-<fresh id>" })` → run the tool. Spend before running so a crash cannot give free work twice. Your server makes the id for each call; never build it from the client's JSON-RPC request id, which the client chooses.
 4. **When the balance is short, return a tool result, not a protocol error:** `isError: true` and text with the top-up URL ("Out of credits: top up at https://…, then retry"). The agent shows it to the human.
 5. **Offer two free tools:** `balance` (`credits.balance`) and `top_up` (`credits.topUpUrl`, the person's own top-up page). Agents use them to explain what is going on.
 6. **Tell the cost up front** in each tool's description ("Costs 10 credits"). Agents and humans read it.
@@ -35,11 +35,11 @@ import { z } from "zod";
 const pay = new PerlyPay(process.env.PERLY_PAY_SECRET_KEY!, { baseUrl: process.env.PERLY_PAY_API });
 const PRODUCT = process.env.PERLY_PAY_CREDITS_PRODUCT_ID!;
 const USER = process.env.MCP_USER_ID!; // stdio: one user per process; HTTP: from the caller's API key
-const SESSION = crypto.randomUUID(); // JSON-RPC ids restart at 0 in every session: never key on them alone
-
-async function charge(cost: number, tool: string, requestId: string): Promise<string | null> {
+async function charge(cost: number, tool: string): Promise<string | null> {
   try {
-    await pay.credits.consume(USER, cost, { product: PRODUCT, action: tool, idempotencyKey: `mcp-${SESSION}-${requestId}` });
+    // One fresh key per call, made here (the SDK keeps it across its own retries). Never the client's JSON-RPC id:
+    // the client picks it, and the same key again returns the first charge, so the tool would run again for free.
+    await pay.credits.consume(USER, cost, { product: PRODUCT, action: tool, idempotencyKey: `mcp-${crypto.randomUUID()}` });
     return null; // spent: run the tool
   } catch (e) {
     const short = e instanceof PerlyPayError && (e.code === "insufficient_credits" || (e.code === "resource_missing" && e.param === "customer"));
@@ -59,8 +59,8 @@ const server = new McpServer({ name: "my-paid-tools", version: "1.0.0" });
 server.registerTool(
   "summarize_url",
   { description: "Summarize a web page. Costs 5 credits.", inputSchema: { url: z.string().url() } },
-  async ({ url }, extra) => {
-    const refused = await charge(5, "summarize_url", String(extra.requestId));
+  async ({ url }) => {
+    const refused = await charge(5, "summarize_url");
     if (refused) return { isError: true, content: [{ type: "text", text: refused }] };
     return { content: [{ type: "text", text: await summarize(url) }] }; // yours
   },
@@ -74,7 +74,7 @@ await server.connect(new StdioServerTransport());
 - Putting `PERLY_PAY_SECRET_KEY` into an MCP config that users copy. A stdio server you hand out must call **your** backend with the user's own API key; only your backend talks to Perly Pay.
 - Throwing a JSON-RPC error for "no credits": many clients hide it. Return `isError: true` with the top-up link.
 - Charging after the work: a failed charge then means free work. Charge first.
-- No idempotency key: an agent's retry of the same request charges twice. Key by a session id plus the request id — JSON-RPC ids start again at 0 in every session, so the id alone would replay an old charge and run the tool for free.
+- Keying the charge on the JSON-RPC request id (alone or with a session id): the client chooses it, and the same key again returns the first charge as a success, so a client that resends an id gets the tool again for free. Make a fresh id on your server for each call.
 - Letting an agent "pay itself". It can only show a link; a human pays the invoice from their wallet.
 
 <!-- perly-pay:ground-rules:start -->
@@ -85,10 +85,10 @@ await server.connect(new StdioServerTransport());
 3. **Never trust the redirect.** A buyer landing on your `return_url` proves nothing. Grant access only from a verified `invoice.fulfilled` webhook, or from your server asking `entitlements.check`.
 4. **Grant on `invoice.fulfilled`, not `invoice.paid`.** Fulfilled comes once per invoice, after the payment cleared screening. A payment held for review is paid but not fulfilled.
 5. **Verify every webhook** on the raw body with the endpoint's `whsec_…` secret (`Perly-Signature`, five minutes of tolerance). A delivery can come twice: act once per event `id`. Answer 2xx fast; failures are retried for 72 hours.
-6. **Idempotency.** The SDK sends an `Idempotency-Key` on every POST and reuses it on retries. Pass your own (`order-<id>`, `req-<id>`) when your code may repeat an action, such as spending credits or opening an order's invoice.
+6. **Idempotency.** The SDK sends an `Idempotency-Key` on every POST and reuses it on retries (without the SDK, send one yourself). Pass your own (`order-<id>`, `req-<id>`) when your code may repeat an action, such as spending credits or opening an order's invoice.
 7. **Money is integers.** Fiat amounts are minor units next to a `currency`: `4900` is $49.00. Only `USD` and `EUR`. Never floats. On-chain amounts are integer strings in the asset's smallest unit.
 8. **Non-custodial, no auto-debit.** Buyers pay BTC, USDC or USDT straight to the seller's wallet; Perly Pay never holds money. Subscriptions renew by an invoice and reminders the buyer pays each period, never by pulling funds. Refunds are sent by the seller from their own wallet.
-9. **Use the SDK:** `npm install perly-pay` (TypeScript, zero dependencies, any runtime with `fetch`) or `composer require perly/perly-pay` (PHP 8.1+). Other languages call the REST API at `https://pay.perly.io/api/v1` with `Authorization: Bearer <key>`; the spec is at `https://pay.perly.io/api/v1/openapi.json`. Point the SDK at a local Pay with `PERLY_PAY_API` (`baseUrl` option).
+9. **Use the SDK:** `npm install perly-pay` (TypeScript, zero dependencies, any runtime with `fetch`). PHP: `perly/perly-pay` is not on Packagist yet, so call the REST API with Guzzle, curl or Laravel's `Http` client and check webhook signatures by hand (the `verify-webhooks` skill shows how); `npx perly-pay init` writes a Laravel integration that does both. Other languages call the REST API at `https://pay.perly.io/api/v1` with `Authorization: Bearer <key>`; the spec is at `https://pay.perly.io/api/v1/openapi.json`. Point the SDK at a local Pay with `PERLY_PAY_API` (`baseUrl` option).
 <!-- perly-pay:ground-rules:end -->
 
 ## More

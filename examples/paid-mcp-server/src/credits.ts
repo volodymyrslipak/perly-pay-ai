@@ -14,9 +14,6 @@ function need(name: string): string {
 
 export const pay = new PerlyPay(need("PERLY_PAY_SECRET_KEY"), { baseUrl: process.env.PERLY_PAY_API || undefined });
 const PRODUCT = () => need("PERLY_PAY_CREDITS_PRODUCT_ID");
-/** JSON-RPC ids start again at 0 in every session: the key carries this process's own id too. */
-const SESSION = randomUUID();
-
 async function customerFor(userId: string) {
   const found = await pay.customers.list({ external_id: userId, limit: 1 });
   return found.data[0] ?? (await pay.customers.create({ external_id: userId }, { idempotencyKey: `customer-${userId}` }));
@@ -37,9 +34,11 @@ export async function balance(userId: string): Promise<number> {
  * Spends `cost` credits for one tool call. Null when spent; otherwise the
  * words to show the person (with their top-up link).
  */
-export async function charge(userId: string, cost: number, tool: string, requestId: string | number): Promise<string | null> {
+export async function charge(userId: string, cost: number, tool: string): Promise<string | null> {
   try {
-    await pay.credits.consume(userId, cost, { product: PRODUCT(), action: tool, idempotencyKey: `mcp-${SESSION}-${requestId}` });
+    // A fresh key per call, made here (the SDK keeps it across its own retries). Never the client's JSON-RPC id:
+    // the client picks it, and the same key again returns the first spend, so the tool would run again for free.
+    await pay.credits.consume(userId, cost, { product: PRODUCT(), action: tool, idempotencyKey: `mcp-${randomUUID()}` });
     return null;
   } catch (error) {
     const short = error instanceof PerlyPayError && (error.code === "insufficient_credits" || (error.code === "resource_missing" && error.param === "customer"));
