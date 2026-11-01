@@ -1,5 +1,5 @@
 ---
-description: "Sell a desktop app, CLI, plugin, game, template or other downloadable software with license keys through Perly Pay — buyers pay in bitcoin, USDC or USDT and get a key; the software activates and validates it without any secret key. Use when the user wants license keys, product keys, activation limits per device, \"unlock the full version\", a paid plugin or app, or offline-friendly licence checks. Creates a product that issues licenses, sells it with a payment link or invoice, delivers the key on invoice.fulfilled, and adds activate/validate/deactivate to the app with LicenseClient."
+description: "Sell a desktop app, CLI, plugin, game, template or other downloadable software with license keys through Perly Pay — buyers pay in bitcoin, USDC or USDT and get a key; the software activates and validates it without any secret key. Use when the user wants license keys, product keys, activation limits per device, \"unlock the full version\", a paid plugin or app, or offline-friendly licence checks. Creates a product that issues licenses, sells it with a payment link or invoice, delivers the key on invoice.fulfilled, and adds activate/validate/deactivate to the app with LicenseClient. Only when payment is in crypto or the user names Perly Pay."
 globs:
 alwaysApply: false
 ---

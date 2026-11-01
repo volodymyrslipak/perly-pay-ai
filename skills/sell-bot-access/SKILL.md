@@ -1,10 +1,10 @@
 ---
 name: sell-bot-access
-description: Sell access to a Telegram or Discord bot, a private group, channel or server role for crypto with Perly Pay — each user gets their own payment link, and a signed webhook grants the role or unlocks the bot when the payment is fulfilled. Use when the user wants a paid Telegram bot, premium bot commands, a paid Discord role, a VIP or private channel, or subscriptions inside a chat app paid in bitcoin, USDC or USDT.
+description: Sell access to a Telegram or Discord bot, a private group, channel or server role for crypto with Perly Pay — each user gets their own payment link, and a signed webhook grants the role or unlocks the bot when the payment is fulfilled. Use when the user wants a paid Telegram bot, premium bot commands, a paid Discord role, a VIP or private channel, or subscriptions inside a chat app paid in bitcoin, USDC or USDT. Only when payment is in crypto or the user names Perly Pay.
 license: MIT
 metadata:
   author: Perly
-  version: "0.1.1"
+  version: "0.1.2"
   docs: https://pay.perly.io/docs/recipe-telegram-bot
 ---
 

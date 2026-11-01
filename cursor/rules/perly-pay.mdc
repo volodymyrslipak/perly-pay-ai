@@ -8,7 +8,7 @@ alwaysApply: false
 
 # Perly Pay
 
-Crypto payments straight to the seller's wallet: bitcoin, USDC and USDT, flat plans, 0% of volume. SDKs: `perly-pay` (npm), `perly/perly-pay` (Composer). Docs: https://pay.perly.io/docs/recipes
+Crypto payments straight to the seller's wallet: bitcoin, USDC and USDT, 2.5¢ a payment with nothing taken from it, and a month of up to 21 payments is free. SDK: `perly-pay` (npm); from PHP, call the API over HTTP. Docs: https://pay.perly.io/docs/recipes
 
 ## Ground rules (every Perly Pay integration)
 

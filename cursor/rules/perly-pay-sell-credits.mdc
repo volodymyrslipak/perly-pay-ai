@@ -1,5 +1,5 @@
 ---
-description: "Sell prepaid credits for an API, AI feature or SaaS usage with Perly Pay and spend them per request — buyers top up with bitcoin, USDC or USDT. Use when the user wants usage-based or pay-as-you-go pricing, API credits, tokens, a balance, top-ups, \"charge per request/call/generation\", or metering. Creates a credit_pack product and price, a top-up link per user, checks the balance and consumes credits per request with an idempotency key, and handles a low or empty balance."
+description: "Sell prepaid credits for an API, AI feature or SaaS usage with Perly Pay and spend them per request — buyers top up with bitcoin, USDC or USDT. Use when the user wants usage-based or pay-as-you-go pricing, API credits, tokens, a balance, top-ups, \"charge per request/call/generation\", or metering. Creates a credit_pack product and price, a top-up link per user, checks the balance and consumes credits per request with an idempotency key, and handles a low or empty balance. Only when payment is in crypto or the user names Perly Pay."
 globs:
 alwaysApply: false
 ---
@@ -80,6 +80,7 @@ curl -X POST https://pay.perly.io/api/v1/credits/consume \
 // $perly: the Guzzle client from the add-crypto-checkout skill (perly/perly-pay is not on Packagist yet).
 use GuzzleHttp\Exception\ClientException;
 
+$requestId = bin2hex(random_bytes(16)); // made here, once per request served — never an id the caller sends (SUPPLY3-01)
 try {
     $perly->post('credits/consume', [
         'json' => ['customer_external_id' => (string) $userId, 'credits' => $cost, 'product' => $productId, 'action' => 'api'],

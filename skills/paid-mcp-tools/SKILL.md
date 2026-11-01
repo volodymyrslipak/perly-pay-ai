@@ -1,10 +1,10 @@
 ---
 name: paid-mcp-tools
-description: Charge for an MCP server's tools per call with Perly Pay credits — users prepay a credit pack in bitcoin, USDC or USDT, and every tool call checks the balance, spends credits idempotently, then runs. Use when the user builds an MCP server (Model Context Protocol) and wants paid tools, per-call pricing, a usage meter for AI agents, or to monetise an MCP server. Uses ordinary credit packs and an API key per user; no x402, no wallet inside the agent.
+description: Charge for an MCP server's tools per call with Perly Pay credits — users prepay a credit pack in bitcoin, USDC or USDT, and every tool call checks the balance, spends credits idempotently, then runs. Use when the user builds an MCP server (Model Context Protocol) and wants paid tools, per-call pricing, a usage meter for AI agents, or to monetise an MCP server. Uses ordinary credit packs and an API key per user; no x402, no wallet inside the agent. Only when payment is in crypto or the user names Perly Pay.
 license: MIT
 metadata:
   author: Perly
-  version: "0.1.1"
+  version: "0.1.2"
   docs: https://pay.perly.io/docs/recipe-paid-mcp-server
 ---
 

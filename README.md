@@ -2,7 +2,7 @@
 
 Sell your service for crypto in one prompt. These skills teach Claude Code, Cursor and any agent that reads `AGENTS.md` how to add [Perly Pay](https://pay.perly.io) to a project the right way: test mode first, signed webhooks, access only on `invoice.fulfilled`, idempotent credit spending, subscriptions renewed by invoice (never auto-debit).
 
-Buyers pay bitcoin, USDC or USDT straight to your wallet. Flat plans, 0% of volume. Everything here is files you install: the skills call Perly Pay's public API with **your own** key, and nothing runs on anyone's server.
+Buyers pay bitcoin, USDC or USDT straight to your wallet. 2.5¢ a payment, nothing taken from it, and a month of up to 21 payments is free. Everything here is files you install: the skills call Perly Pay's public API with **your own** key, and nothing runs on anyone's server.
 
 | Skill | Use it to |
 | --- | --- |

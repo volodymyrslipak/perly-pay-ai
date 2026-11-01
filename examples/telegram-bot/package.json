@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "perly-pay": "^0.1.1"
+    "perly-pay": "^0.1.2"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

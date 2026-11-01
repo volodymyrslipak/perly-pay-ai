@@ -1,5 +1,5 @@
 ---
-description: "Sell a SaaS plan or membership as a crypto subscription with Perly Pay — every period is an invoice the buyer pays in bitcoin, USDC or USDT, with reminders; there is no auto-debit. Use when the user wants monthly or yearly plans, a Pro tier, memberships, recurring billing, trials, or \"subscriptions\" paid in crypto. Creates the subscription price, subscribes a user through their first invoice, gates features with an entitlement check, reacts to renewal and past-due events, and gives buyers the portal to pay renewals or cancel."
+description: "Sell a SaaS plan or membership as a crypto subscription with Perly Pay — every period is an invoice the buyer pays in bitcoin, USDC or USDT, with reminders; there is no auto-debit. Use when the user wants monthly or yearly plans, a Pro tier, memberships, recurring billing, trials, or \"subscriptions\" paid in crypto. Creates the subscription price, subscribes a user through their first invoice, gates features with an entitlement check, reacts to renewal and past-due events, and gives buyers the portal to pay renewals or cancel. Only when payment is in crypto or the user names Perly Pay."
 globs:
 alwaysApply: false
 ---

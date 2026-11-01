@@ -1,0 +1,20 @@
+{
+  "name": "perly-pay",
+  "version": "0.1.2",
+  "description": "Sell for crypto from Gemini CLI: products, payment links, invoices and test payments, paid straight to your own wallet.",
+  "contextFileName": "AGENTS-snippet.md",
+  "mcpServers": {
+    "perly-pay": {
+      "command": "npx",
+      "args": ["-y", "perly-pay-mcp"]
+    }
+  },
+  "settings": [
+    {
+      "name": "Perly Pay secret key",
+      "description": "From Dashboard → Developers: sk_test_… while you build.",
+      "envVar": "PERLY_PAY_SECRET_KEY",
+      "sensitive": true
+    }
+  ]
+}

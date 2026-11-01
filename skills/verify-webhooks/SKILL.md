@@ -4,7 +4,7 @@ description: Write or fix a Perly Pay webhook endpoint that verifies the Perly-S
 license: MIT
 metadata:
   author: Perly
-  version: "0.1.1"
+  version: "0.1.2"
   docs: https://pay.perly.io/docs/webhooks
 ---
 
@@ -105,6 +105,7 @@ const response = await POST(new Request("http://localhost/api/webhooks/perly", {
 // perly/perly-pay is not on Packagist yet: the check written out, as its Webhook::verify does it.
 function perly_pay_verify(string $payload, ?string $header, string $secret, int $tolerance = 300): ?array
 {
+    if ($secret === '') return null; // an empty key is one anybody can sign with
     $timestamp = null;
     $signatures = [];
     foreach (explode(',', (string) $header) as $part) {
@@ -123,7 +124,13 @@ function perly_pay_verify(string $payload, ?string $header, string $secret, int 
     return null;
 }
 
-$event = perly_pay_verify(file_get_contents('php://input'), $_SERVER['HTTP_PERLY_SIGNATURE'] ?? null, (string) getenv('PERLY_PAY_WEBHOOK_SECRET'));
+// php-fpm's clear_env and phpdotenv's createImmutable leave getenv() empty: read $_ENV and $_SERVER too.
+$secret = (string) (getenv('PERLY_PAY_WEBHOOK_SECRET') ?: ($_ENV['PERLY_PAY_WEBHOOK_SECRET'] ?? $_SERVER['PERLY_PAY_WEBHOOK_SECRET'] ?? ''));
+if ($secret === '') {
+    http_response_code(500); // not set up: Perly Pay retries once it is
+    exit;
+}
+$event = perly_pay_verify(file_get_contents('php://input'), $_SERVER['HTTP_PERLY_SIGNATURE'] ?? null, $secret);
 if ($event === null) {
     http_response_code(400);
     exit;

@@ -3,7 +3,7 @@
 
 # Payments: Perly Pay
 
-This project takes crypto payments (bitcoin, USDC, USDT) with Perly Pay. Money goes straight to the seller's wallet. SDKs: `perly-pay` (npm), `perly/perly-pay` (Composer). Docs and runnable examples: https://pay.perly.io/docs/recipes.
+This project takes crypto payments (bitcoin, USDC, USDT) with Perly Pay. Money goes straight to the seller's wallet. SDK: `perly-pay` (npm); from PHP, call the API over HTTP. Docs and runnable examples: https://pay.perly.io/docs/recipes.
 
 ## Ground rules (every Perly Pay integration)
 
@@ -23,7 +23,7 @@ This project takes crypto payments (bitcoin, USDC, USDT) with Perly Pay. Money g
 
 The user wants buyers to pay for something in their app with bitcoin or dollar stablecoins.
 
-1. **Detect the stack.** Read `package.json` (`next`, `express`, `hono`, `fastify`, `@nestjs/core`) or `composer.json` (`laravel/framework`, `symfony/*`). WordPress shop: point to the WooCommerce plugin (`/docs/woocommerce`) instead of code; WHMCS: `/docs/whmcs`; no-code: Zapier or Make. Other languages: the REST API.
+1. **Detect the stack.** Read `package.json` (`next`, `express`, `hono`, `fastify`, `@nestjs/core`) or `composer.json` (`laravel/framework`, `symfony/*`). WordPress shop: point to the WooCommerce plugin (`/docs/woocommerce`) instead of code; WHMCS: `/docs/whmcs`; no-code: Make. Other languages: the REST API.
 2. **Install the SDK** (`npm install perly-pay`; in PHP there is nothing of ours to install yet: call the API with Guzzle or Laravel's `Http`, as below) and add `PERLY_PAY_SECRET_KEY=sk_test_…` and `PERLY_PAY_WEBHOOK_SECRET=` to `.env.example` and the local env file. Ask the user for a test key from Dashboard → Developers → API keys; never invent one and never commit one.
 3. **Create the product and price once** — a setup script, not on every request. Keep the ids in env or config (`PERLY_PAY_PRICE_ID`). A one-off sale is `model: "one_time"` with `unit_amount` in minor units.
 4. **Open the payment on your server.** Either a **payment link** (a fixed URL, no code per buyer, made once) or, per order, an **invoice** with `customer`, your `metadata` (`order_id`, `user_id`) and a `return_url`, then redirect to `invoice.url`. A **checkout session** does the same for several line items. Pass `idempotencyKey: "order-<id>"` so a double click opens one invoice.
@@ -143,7 +143,7 @@ Before anyone pays real money, and again on the day the integration switches to 
 3. **Recreate what you made in test** with the live key: products, prices, payment links, coupons. Ids differ per mode, so update `PERLY_PAY_*_ID` in production config (a setup script run once per mode is easiest).
 4. **Live webhook endpoint** with your production https URL and the same events; its new `whsec_…` into `PERLY_PAY_WEBHOOK_SECRET`.
 5. **Business details:** name, support email, receipt prefix and refund terms in Settings — buyers see them on invoices and receipts. Add your site under Settings → Checkout if you open the checkout over your page (pay.js).
-6. **Plan:** test mode is free and unlimited; live counts paid sales per calendar month (Free 21, then Starter, Pro, Business, Scale and Enterprise with no limit — flat, 0% of volume, no fee per sale). Each limit has a 10% buffer; past it, new live invoices and checkout sessions are refused with `plan_limit_reached` (403) until a person moves up a plan in the dashboard, while invoices already made still get paid.
+6. **Price:** test mode is free and unlimited. Live is pay as you go: 2.5¢ for each paid payment, never more than 0.5% of it, with nothing taken from the payment itself. A month of up to 21 payments costs $0; past 21, every payment of the month is billed. Sales have no limit. The bill comes on the 1st, with 14 days to pay in Dashboard → Billing; a bill still unpaid after them refuses new live invoices and checkout sessions with `bill_overdue` (403) until it is paid, and payments already started still arrive. A business still on a plan paid ahead is refused with `plan_limit_reached` (403) past that plan's limit and its 10% buffer.
 7. **One real payment** of a small amount from your own wallet: watch it arrive, the webhook grant access, the receipt email, then refund it from your wallet to practise.
 8. **Watch:** Dashboard → Developers shows webhook deliveries and failures; connect Telegram for payment and webhook alerts.
 

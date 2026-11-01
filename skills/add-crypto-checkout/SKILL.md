@@ -1,10 +1,10 @@
 ---
 name: add-crypto-checkout
-description: Add a crypto checkout (bitcoin, USDC, USDT) to an existing web app or API with Perly Pay, paid straight to the seller's wallet. Use when the user wants to accept crypto, take payments, sell a product or service, add a "Pay with crypto" button, a payment link or a checkout page, or mentions Perly Pay. Detects the framework (Next.js, Express, Hono, Fastify, Laravel, plain PHP), starts in test mode, creates the product and price, opens an invoice or checkout session, adds a webhook route that verifies the signature and grants access only on invoice.fulfilled, then walks the go-live checklist.
+description: Add a crypto checkout (bitcoin, USDC, USDT) to an existing web app or API with Perly Pay, paid straight to the seller's wallet. Use when the user wants to accept crypto, sell a product or service for crypto, add a "Pay with crypto" button, a crypto payment link or checkout page, or mentions Perly Pay. Not for card or bank payments. Detects the framework (Next.js, Express, Hono, Fastify, Laravel, plain PHP), starts in test mode, creates the product and price, opens an invoice or checkout session, adds a webhook route that verifies the signature and grants access only on invoice.fulfilled, then walks the go-live checklist.
 license: MIT
 metadata:
   author: Perly
-  version: "0.1.1"
+  version: "0.1.2"
   docs: https://pay.perly.io/docs/recipes
 ---
 
@@ -16,7 +16,7 @@ The user wants buyers to pay for something in their app with bitcoin or dollar s
 
 ## Steps
 
-1. **Detect the stack.** Read `package.json` (`next`, `express`, `hono`, `fastify`, `@nestjs/core`) or `composer.json` (`laravel/framework`, `symfony/*`). WordPress shop: point to the WooCommerce plugin (`/docs/woocommerce`) instead of code; WHMCS: `/docs/whmcs`; no-code: Zapier or Make. Other languages: the REST API.
+1. **Detect the stack.** Read `package.json` (`next`, `express`, `hono`, `fastify`, `@nestjs/core`) or `composer.json` (`laravel/framework`, `symfony/*`). WordPress shop: point to the WooCommerce plugin (`/docs/woocommerce`) instead of code; WHMCS: `/docs/whmcs`; no-code: Make. Other languages: the REST API.
 2. **Install the SDK** (`npm install perly-pay`; in PHP there is nothing of ours to install yet: call the API with Guzzle or Laravel's `Http`, as below) and add `PERLY_PAY_SECRET_KEY=sk_test_…` and `PERLY_PAY_WEBHOOK_SECRET=` to `.env.example` and the local env file. Ask the user for a test key from Dashboard → Developers → API keys; never invent one and never commit one.
 3. **Create the product and price once** — a setup script, not on every request. Keep the ids in env or config (`PERLY_PAY_PRICE_ID`). A one-off sale is `model: "one_time"` with `unit_amount` in minor units.
 4. **Open the payment on your server.** Either a **payment link** (a fixed URL, no code per buyer, made once) or, per order, an **invoice** with `customer`, your `metadata` (`order_id`, `user_id`) and a `return_url`, then redirect to `invoice.url`. A **checkout session** does the same for several line items. Pass `idempotencyKey: "order-<id>"` so a double click opens one invoice.
